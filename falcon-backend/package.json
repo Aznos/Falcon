@@ -13,6 +13,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "dkim-signer": "^0.2.2",
     "hono": "^4.12.16"
   }
 }
