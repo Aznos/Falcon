@@ -10,7 +10,7 @@ app.use('*', cors({ origin: "http://localhost:5173" }))
 
 app.get("/api/health", (c) => c.json({ status: "ok" }))
 
-app.get("/api/send", async (c) => {
+app.post("/api/send", async (c) => {
     const { to, subject, body } = await c.req.json()
 
     if(!to || !subject || !body) {

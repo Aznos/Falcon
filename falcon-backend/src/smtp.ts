@@ -96,6 +96,7 @@ export async function sendRawEmail({ from, to, subject, body }: {
                     const msg = new TextDecoder().decode(data)
                     chunks.push(msg)
                     const code = parseResponse(msg)
+                    console.log(`[STMP] ${msg.trim()}`)
 
                     if(code === 220) {
                         socket.write(`EHLO mail.maddoxh.com\r\n`)
@@ -108,9 +109,7 @@ export async function sendRawEmail({ from, to, subject, body }: {
                         } else if(last.includes('RCPT TO')) {
                             socket.write(`DATA\r\n`)
                         } else if(last.includes('DATA')) {
-                            socket.write(
-                                `From: Maddox <${from}>\r\nTo: ${to}\r\nSubject: ${subject}\r\nDate: ${new Date().toUTCString()}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${body}\r\n.\r\n`
-                            )
+                            socket.write(`${message}\r\n.\r\n`)
                         } else {
                             socket.write(`QUIT\r\n`)
                         }
