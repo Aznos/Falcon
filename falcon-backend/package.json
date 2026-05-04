@@ -13,6 +13,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.105.1",
     "dkim-signer": "^0.2.2",
     "hono": "^4.12.16"
   }
