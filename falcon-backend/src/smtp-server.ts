@@ -91,29 +91,27 @@ export function startSMTPServer() {
 
 async function saveEmail(session: EmailSession) {
     const raw = session.data
-    const lines = raw.split("\n")
 
-    // Get subject
+    const normalized = raw.replace(/\r\n/g, "\n")
+    const lines = normalized.split("\n")
+
     const subjectLine = lines.find(l => l.toLowerCase().startsWith("subject:"))
     const subject = subjectLine ? subjectLine.replace(/^subject:\s*/i, "").trim() : "(no subject)"
-
-    const fromLine = lines.find(l => l.toLowerCase().startsWith("from:"))
-    const from = fromLine ? fromLine.replace(/^from:\s*/i, "").trim() : session.from
 
     let body = ""
 
     const contentTypeLine = lines.find(l => l.toLowerCase().startsWith("content-type:"))
     if (contentTypeLine?.toLowerCase().includes("multipart")) {
-        const boundaryMatch = raw.match(/boundary="([^"]+)"/)
+        const boundaryMatch = normalized.match(/boundary="([^"]+)"/)
         if(boundaryMatch) {
             const boundary = boundaryMatch[1]
-            const parts = raw.split(`--${boundary}`)
+            const parts = normalized.split(`--${boundary}`)
             for(const part of parts) {
                 if(part.toLowerCase().includes("content-type: text/plain")) {
                     const blankIndex = part.indexOf("\n\n")
                     if(blankIndex !== -1) {
                         body = part.slice(blankIndex + 2).trim()
-                        body = body.replace(/--$/, "").trim()
+                        body = body.replace(/^--$/, "").trim()
                         break
                     }
                 }
@@ -121,8 +119,11 @@ async function saveEmail(session: EmailSession) {
         }
     } else {
         const blankIndex = lines.findIndex(l => l.trim() === "")
-        body = blankIndex !== -1 ? lines.slice(blankIndex + 1).join("\n").trim() : raw
+        body = blankIndex !== -1 ? lines.slice(blankIndex + 1).join("\n").trim() : normalized
     }
+
+    console.log(`[DB] Subject: ${subject}`)
+    console.log(`[DB] Body: ${body}`)
 
     const { error } = await supabase.from("emails").insert({
         from_address: session.from,

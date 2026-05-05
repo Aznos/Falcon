@@ -10,8 +10,9 @@ interface Email {
 }
 
 export default function App() {
-    const [view, setView] = useState<"inbox" | "compose">("inbox")
+    const [view, setView] = useState<"inbox" | "sent" | "compose">("inbox")
     const [emails, setEmails] = useState<Email[]>([])
+    const [sentEmails, setSentEmails] = useState<Email[]>([])
     const [selected, setSelected] = useState<Email | null>(null)
     const [loading, setLoading] = useState<boolean>(true)
 
@@ -23,6 +24,7 @@ export default function App() {
 
     useEffect(() => {
         if(view === "inbox") fetchInbox()
+        if(view === "sent") fetchSent()
     }, [view])
 
     async function fetchInbox() {
@@ -30,6 +32,14 @@ export default function App() {
         const res = await fetch("/api/inbox")
         const data = await res.json()
         setEmails(data)
+        setLoading(false)
+    }
+
+    async function fetchSent() {
+        setLoading(true)
+        const res = await fetch("/api/sent")
+        const data = await res.json()
+        setSentEmails(data)
         setLoading(false)
     }
 
@@ -67,6 +77,12 @@ export default function App() {
                     {emails.length > 0 && (
                         <span className="ml-2 text-xs bg-zinc-700 px-1.5 py-0.5 rounded-full">{emails.length}</span>
                     )}
+                </button>
+                <button
+                    onClick={() => { setView("sent"); setSelected(null) }}
+                    className={`text-left text-sm px-3 py-2 rounded-lg transition-colors ${view === "sent" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
+                >
+                    Sent
                 </button>
                 <button
                     onClick={() => { setView("compose"); setSelected(null); setStatus("idle") }}
@@ -125,6 +141,56 @@ export default function App() {
                         ) : (
                             <div className="flex items-center justify-center h-full">
                                 <p className="text-zinc-600 text-sm">Select an email to read</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Sent list */}
+                {view === "sent" && (
+                    <div className="w-72 border-r border-zinc-800 overflow-y-auto shrink-0">
+                        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+                            <p className="text-sm font-medium">Sent</p>
+                            <button onClick={fetchSent} className="text-xs text-zinc-500 hover:text-white transition-colors">Refresh</button>
+                        </div>
+
+                        {loading ? (
+                            <p className="text-xs text-zinc-500 p-4">Loading...</p>
+                        ) : sentEmails.length === 0 ? (
+                            <p className="text-xs text-zinc-500 p-4">No sent emails.</p>
+                        ) : (
+                            sentEmails.map(email => (
+                                <div
+                                    key={email.id}
+                                    onClick={() => setSelected(email)}
+                                    className={`p-4 border-b border-zinc-800 cursor-pointer hover:bg-zinc-900 transition-colors ${selected?.id === email.id ? "bg-zinc-900" : ""}`}
+                                >
+                                    <p className="text-sm font-medium truncate">{email.to_address}</p>
+                                    <p className="text-xs text-zinc-400 truncate mt-0.5">{email.subject || "(no subject)"}</p>
+                                    <p className="text-xs text-zinc-600 mt-1">{new Date(email.received_at).toLocaleDateString()}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                )}
+
+                {/* Sent detail */}
+                {view === "sent" && (
+                    <div className="flex-1 p-8 overflow-y-auto">
+                        {selected ? (
+                            <div>
+                                <h2 className="text-lg font-semibold mb-4">{selected.subject || "(no subject)"}</h2>
+                                <div className="flex gap-6 text-xs text-zinc-400 mb-6">
+                                    <span>To: <span className="text-zinc-300">{selected.to_address}</span></span>
+                                    <span>{new Date(selected.received_at).toLocaleString()}</span>
+                                </div>
+                                <div className="border-t border-zinc-800 pt-6">
+                                    <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{selected.body}</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center h-full">
+                                <p className="text-zinc-600 text-sm">Select a message to read</p>
                             </div>
                         )}
                     </div>

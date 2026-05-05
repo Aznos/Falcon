@@ -86,41 +86,55 @@ export async function sendRawEmail({ from, to, subject, body }: {
         `${body}`
 
     return new Promise<void>((resolve, reject) => {
-        const chunks: string[] = []
+        let state = 'GREETING'
+        let buf = ''
 
         Bun.connect({
             hostname: mxHost,
             port: 25,
             socket: {
                 data(socket, data) {
-                    const msg = new TextDecoder().decode(data)
-                    chunks.push(msg)
-                    const code = parseResponse(msg)
-                    console.log(`[STMP] ${msg.trim()}`)
+                    buf += new TextDecoder().decode(data)
 
-                    if(code === 220) {
-                        socket.write(`EHLO mail.maddoxh.com\r\n`)
-                    } else if(code === 250 && msg.includes('mail.maddoxh.com')) {
-                        socket.write(`MAIL FROM:<${from}>\r\n`)
-                    } else if(code === 250 && chunks.length > 2) {
-                        const last = chunks[chunks.length - 1] ?? ''
-                        if(last.includes('MAIL FROM')) {
-                            socket.write(`RCPT TO:<${to}>\r\n`)
-                        } else if(last.includes('RCPT TO')) {
-                            socket.write(`DATA\r\n`)
-                        } else if(last.includes('DATA')) {
-                            socket.write(`${message}\r\n.\r\n`)
-                        } else {
-                            socket.write(`QUIT\r\n`)
+                    const lines = buf.split('\r\n')
+                    buf = lines.pop() ?? ''
+
+                    for (const line of lines) {
+                        if (!line) continue
+                        const code = parseInt(line.slice(0, 3))
+                        const isContinuation = line[3] === '-'
+                        console.log(`[SMTP] ${line}`)
+
+                        if (code >= 400) {
+                            socket.end()
+                            reject(new Error(`SMTP error ${code}: ${line}`))
+                            return
                         }
-                    } else if(code === 354) {
 
-                    } else if(code === 221) {
-                        socket.end()
-                        resolve()
-                    } else if(code >= 400) {
-                        socket.end()
-                        reject(new Error(`SMTP error ${code}: ${msg.trim()}`))
+                        if (isContinuation) continue
+
+                        if (state === 'GREETING' && code === 220) {
+                            state = 'EHLO'
+                            socket.write(`EHLO mail.maddoxh.com\r\n`)
+                        } else if (state === 'EHLO' && code === 250) {
+                            state = 'MAIL_FROM'
+                            socket.write(`MAIL FROM:<${from}>\r\n`)
+                        } else if (state === 'MAIL_FROM' && code === 250) {
+                            state = 'RCPT_TO'
+                            socket.write(`RCPT TO:<${to}>\r\n`)
+                        } else if (state === 'RCPT_TO' && code === 250) {
+                            state = 'DATA'
+                            socket.write('DATA\r\n')
+                        } else if (state === 'DATA' && code === 354) {
+                            state = 'BODY'
+                            socket.write(`${message}\r\n.\r\n`)
+                        } else if (state === 'BODY' && code === 250) {
+                            state = 'QUIT'
+                            socket.write('QUIT\r\n')
+                        } else if (state === 'QUIT' && code === 221) {
+                            socket.end()
+                            resolve()
+                        }
                     }
                 },
                 error(_, err) { reject(err) },

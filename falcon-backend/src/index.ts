@@ -23,10 +23,29 @@ app.post("/api/send", async (c) => {
 
     try {
         await sendRawEmail({from: "me@maddoxh.com", to, subject, body})
+
+        await supabase.from("emails").insert({
+            from_address: "me@maddoxh.com",
+            to_address: to,
+            subject,
+            body,
+        })
+
         return c.json({ ok: true })
     } catch(err: any) {
         return c.json({ error: err.message }, 500)
     }
+})
+
+app.get("/api/sent", async (c) => {
+    const { data, error } = await supabase
+        .from("emails")
+        .select("*")
+        .eq("from_address", "me@maddoxh.com")
+        .order("received_at", { ascending: false })
+
+    if(error) return c.json({ error: error.message }, 500)
+    return c.json(data)
 })
 
 app.get("/api/inbox", async (c) => {
