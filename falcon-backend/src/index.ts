@@ -35,14 +35,16 @@ app.post("/api/send", async (c) => {
             references
         })
 
-        await supabase.from("emails").insert({
+        const { error: insertError } = await supabase.from("emails").insert({
             from_address: "me@maddoxh.com",
             to_address: to,
             subject,
             body,
             folder: "sent",
-            messageID: messageID
+            message_id: messageID
         })
+
+        if (insertError) throw new Error(`Failed to save sent email: ${insertError.message}`)
 
         return c.json({ ok: true, messageID })
     } catch(err: any) {
@@ -54,7 +56,7 @@ app.get("/api/sent", async (c) => {
     const { data, error } = await supabase
         .from("emails")
         .select("*")
-        .eq("from_address", "me@maddoxh.com")
+        .eq("folder", "sent")
         .order("received_at", { ascending: false })
 
     if(error) return c.json({ error: error.message }, 500)

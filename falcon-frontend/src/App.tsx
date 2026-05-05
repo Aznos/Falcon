@@ -95,8 +95,8 @@ export default function App() {
                     )}
                 </button>
                 <button
-                    onClick={() => { setFolder("sent"); setView("inbox"); setSelected(null) }}
-                    className={`text-left text-sm px-3 py-2 rounded-lg transition-colors ${folder === "sent" && view === "inbox" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
+                    onClick={() => { setView("sent"); setSelected(null) }}
+                    className={`text-left text-sm px-3 py-2 rounded-lg transition-colors ${view === "sent" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
                 >
                     Sent
                 </button>
