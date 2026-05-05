@@ -6,7 +6,8 @@ interface Email {
     to_address: string
     subject: string
     body: string
-    received_at: string
+    received_at: string,
+    message_id: string
 }
 
 export default function App() {
@@ -22,17 +23,31 @@ export default function App() {
     const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle")
     const [error, setError] = useState("")
 
+    const [cc, setCc] = useState("")
+    const [inReplyTo, setInReplyTo] = useState<string | undefined>()
+    const [references, setReferences] = useState<string[]>([])
+    const [folder, setFolder] = useState<"inbox" | "sent">("inbox")
+
     useEffect(() => {
         if(view === "inbox") fetchInbox()
         if(view === "sent") fetchSent()
-    }, [view])
+    }, [view, folder])
 
     async function fetchInbox() {
         setLoading(true)
-        const res = await fetch("/api/inbox")
+        const res = await fetch(`/api/inbox?folder=${folder}`)
         const data = await res.json()
         setEmails(data)
         setLoading(false)
+    }
+
+    function handleReply(email: Email) {
+        setTo(email.from_address)
+        setSubject(email.subject.startsWith("Re:") ? email.subject : `Re: ${email.subject}`)
+        setBody(`\n\n--- Original message ---\nFrom: ${email.from_address}\n${email.body}`)
+        setInReplyTo(email.message_id ?? undefined)
+        setReferences(email.message_id ? [email.message_id] : [])
+        setView("compose")
     }
 
     async function fetchSent() {
@@ -50,11 +65,12 @@ export default function App() {
             const res = await fetch("/api/send", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ to, subject, body }),
+                body: JSON.stringify({ to, cc: cc || undefined, subject, body, inReplyTo, references }),
             })
 
             const data = await res.json()
             if(!res.ok) throw new Error(data.error)
+            setTo(""); setCc(""); setSubject(""); setBody("")
             setStatus("sent")
         } catch(e: any) {
             setError(e.message)
@@ -79,8 +95,8 @@ export default function App() {
                     )}
                 </button>
                 <button
-                    onClick={() => { setView("sent"); setSelected(null) }}
-                    className={`text-left text-sm px-3 py-2 rounded-lg transition-colors ${view === "sent" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
+                    onClick={() => { setFolder("sent"); setView("inbox"); setSelected(null) }}
+                    className={`text-left text-sm px-3 py-2 rounded-lg transition-colors ${folder === "sent" && view === "inbox" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
                 >
                     Sent
                 </button>
@@ -137,6 +153,12 @@ export default function App() {
                                 <div className="border-t border-zinc-800 pt-6">
                                     <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{selected.body}</p>
                                 </div>
+                                <button
+                                    onClick={() => handleReply(selected)}
+                                    className="mt-4 px-4 py-1.5 text-xs border border-zinc-700 rounded-lg text-zinc-300 hover:bg-zinc-800 transition-colors"
+                                >
+                                    Reply
+                                </button>
                             </div>
                         ) : (
                             <div className="flex items-center justify-center h-full">
@@ -213,6 +235,15 @@ export default function App() {
                                         placeholder="recipient@example.com"
                                         value={to}
                                         onChange={e => setTo(e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-zinc-400 uppercase tracking-wide">CC</label>
+                                    <input
+                                        className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
+                                        placeholder="cc@example.com, another@example.com"
+                                        value={cc}
+                                        onChange={e => setCc(e.target.value)}
                                     />
                                 </div>
                                 <div>
