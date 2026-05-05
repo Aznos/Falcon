@@ -15,23 +15,36 @@ startSMTPServer()
 app.get("/api/health", (c) => c.json({ status: "ok" }))
 
 app.post("/api/send", async (c) => {
-    const { to, subject, body } = await c.req.json()
+    const { to, cc, subject, body, inReplyTo, references } = await c.req.json()
 
     if(!to || !subject || !body) {
         return c.json({ error: "Missing fields" }, 400)
     }
 
+    const toList: string[] = Array.isArray(to) ? to : to.split(",").map((s: string) => s.trim()).filter(Boolean)
+    const ccList: string[] = cc ? (Array.isArray(cc) ? cc : cc.split(",").map((s: string) => s.trim()).filter(Boolean)) : []
+
     try {
-        await sendRawEmail({from: "me@maddoxh.com", to, subject, body})
+        const messageID = await sendRawEmail({
+            from: "me@maddoxh.com",
+            to: toList,
+            cc: ccList.length ? ccList : undefined,
+            subject,
+            body,
+            inReplyTo,
+            references
+        })
 
         await supabase.from("emails").insert({
             from_address: "me@maddoxh.com",
             to_address: to,
             subject,
             body,
+            folder: "sent",
+            messageID: messageID
         })
 
-        return c.json({ ok: true })
+        return c.json({ ok: true, messageID })
     } catch(err: any) {
         return c.json({ error: err.message }, 500)
     }
@@ -49,9 +62,11 @@ app.get("/api/sent", async (c) => {
 })
 
 app.get("/api/inbox", async (c) => {
+    const folder = c.req.query("folder") ?? "inbox"
     const { data, error } = await supabase
         .from("emails")
         .select("*")
+        .eq("folder", folder)
         .order("received_at", { ascending: false })
 
     if(error) return c.json({ error: error.message}, 500)

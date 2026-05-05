@@ -36,15 +36,18 @@ function sha256base64(data: string): string {
 function generateDKIMHeader(headers: {
     from: string
     to: string
+    cc?: string
     subject: string
     messageID: string
     date: string
     body: string
 }): string {
-    const { from, to, subject, messageID, date, body } = headers
+    const { from, to, cc, subject, messageID, date, body } = headers
 
     const bodyHash = sha256base64(canonicalizeBodyRelaxed(body))
-    const signedHeaderNames = "from:to:subject:date:message-id"
+    const signedHeaderNames = cc
+        ? "from:to:cc:subject:date:message-id"
+        : "from:to:subject:date:message-id"
     const timestamp = Math.floor(Date.now() / 1000)
 
     const dkimHeaderBase =
@@ -52,9 +55,10 @@ function generateDKIMHeader(headers: {
         `s=${DKIM_SELECTOR}; t=${timestamp}; ` +
         `h=${signedHeaderNames}; bh=${bodyHash}; b=`
 
-    const canonHeaders =
-        canonicalizeHeaderRelaxed("from", `Maddox <${from}>`) + "\r\n" +
+    let canonHeaders =
+        canonicalizeHeaderRelaxed("from", from) + "\r\n" +
         canonicalizeHeaderRelaxed("to", to) + "\r\n" +
+        (cc ? canonicalizeHeaderRelaxed("cc", cc) + "\r\n" : "") +
         canonicalizeHeaderRelaxed("subject", subject) + "\r\n" +
         canonicalizeHeaderRelaxed("date", date) + "\r\n" +
         canonicalizeHeaderRelaxed("message-id", messageID) + "\r\n" +
@@ -68,34 +72,66 @@ function generateDKIMHeader(headers: {
     return `DKIM-Signature: ${dkimHeaderBase}${folded}`
 }
 
-export async function sendRawEmail({ from, to, subject, body }: {
+export async function sendRawEmail({ from, to, cc, subject, body, inReplyTo, references }: {
     from: string
-    to: string
+    to: string[]
+    cc?: string[]
     subject: string
     body: string
+    inReplyTo?: string
+    references?: string[]
 }) {
-    const toDomain = to.split("@")[1]
-    if(!toDomain) throw new Error("Invalid recipient address")
-    const mxHost = await getMXHost(toDomain)
+    if(!to.length) throw new Error("No recipients")
+
+    const allRecipients = [...to, ...(cc ?? [])]
+    const firstDomain = to[0]!.split("@")[1]
+    if(!firstDomain) throw new Error("Invalid recipient address")
+
+    const byDomain = new Map<string, string[]>()
+    for(const addr of allRecipients) {
+        const domain = addr.split("@")[1] ?? ""
+        if(!byDomain.has(domain)) byDomain.set(domain, [])
+        byDomain.get(domain)!.push(addr)
+    }
 
     const date = new Date().toUTCString()
     const messageID = `<${Date.now()}.${Math.random().toString(36).slice(2)}@maddoxh.com>`
-    const dkimHeader = generateDKIMHeader({ from, to, subject, messageID, date, body })
+    const dkimHeader = generateDKIMHeader({ from: `Maddox <${from}>`, to: to.join(", "), cc: cc?.join(", "), subject, messageID, date, body })
 
     const message =
         `${dkimHeader}\r\n` +
         `From: Maddox <${from}>\r\n` +
-        `To: ${to}\r\n` +
+        `To: ${to.join(", ")}\r\n` +
+        (cc?.length ? `Cc: ${cc.join(", ")}\r\n` : "") +
         `Subject: ${subject}\r\n` +
         `Date: ${date}\r\n` +
         `Message-ID: ${messageID}\r\n` +
+        (inReplyTo ? `In-Reply-To: ${inReplyTo}\r\n` : "") +
+        (references?.length ? `References: ${references.join(" ")}\r\n` : "") +
         `MIME-Version: 1.0\r\n` +
         `Content-Type: text/plain; charset=UTF-8\r\n` +
         `\r\n` +
         `${body}`
 
+    const sends = Array.from(byDomain.entries()).map(([domain, recipients]) =>
+        sendToMX({ domain, recipients, from, message })
+    )
+
+    await Promise.all(sends)
+    return messageID
+}
+
+async function sendToMX({ domain, recipients, from, message }: {
+    domain: string
+    recipients: string[]
+    from: string
+    message: string
+}) {
+    const mxHost = await getMXHost(domain)
+
     return new Promise<void>((resolve, reject) => {
         let state = "GREETING"
+        let recipientIndex = 0
         let buf = ""
 
         Bun.connect({
@@ -129,10 +165,16 @@ export async function sendRawEmail({ from, to, subject, body }: {
                             socket.write(`MAIL FROM:<${from}>\r\n`)
                         } else if(state === "MAIL_FROM" && code === 250) {
                             state = "RCPT_TO"
-                            socket.write(`RCPT TO:<${to}>\r\n`)
+                            socket.write(`RCPT TO:<${recipients[0]}>\r\n`)
+                            recipientIndex = 1
                         } else if(state === "RCPT_TO" && code === 250) {
-                            state = "DATA"
-                            socket.write("DATA\r\n")
+                            if(recipientIndex < recipients.length) {
+                                socket.write(`RCPT TO:<${recipients[recipientIndex]}>\r\n`)
+                                recipientIndex++
+                            } else {
+                                state = "DATA"
+                                socket.write("DATA\r\n")
+                            }
                         } else if(state === "DATA" && code === 354) {
                             state = "BODY"
                             socket.write(`${message}\r\n.\r\n`)
