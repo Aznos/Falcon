@@ -18,6 +18,7 @@ const DKIM = {
 
 export interface EmailParams {
     from: string
+    fromDisplay?: string
     to: string[]
     cc?: string[]
     subject: string
@@ -96,10 +97,11 @@ function buildDKIMHeader(headers: {
 // ── Message building ──────────────────────────────────────────────────────────
 
 function buildMessage(params: EmailParams, messageID: string, date: string): string {
-    const { from, to, cc, subject, body, inReplyTo, references } = params
+    const { from, fromDisplay, to, cc, subject, body, inReplyTo, references } = params
+    const fromHeader = fromDisplay ? `${fromDisplay} <${from}>` : from
 
     const dkimHeader = buildDKIMHeader({
-        from: `Maddox <${from}>`,
+        from: fromHeader,
         to: to.join(", "),
         cc: cc?.join(", "),
         subject,
@@ -110,7 +112,7 @@ function buildMessage(params: EmailParams, messageID: string, date: string): str
 
     return (
         `${dkimHeader}\r\n` +
-        `From: Maddox <${from}>\r\n` +
+        `From: ${fromHeader}\r\n` +
         `To: ${to.join(", ")}\r\n` +
         (cc?.length ? `Cc: ${cc.join(", ")}\r\n` : "") +
         `Subject: ${subject}\r\n` +
