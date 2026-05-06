@@ -1,20 +1,42 @@
-import { promises as dns } from "dns"
-import { createSign, createHash } from "crypto"
-import { readFileSync } from "fs"
+import { promises as dns } from "node:dns"
+import { createSign, createHash } from "node:crypto"
+import { readFileSync } from "node:fs"
 import * as net from "node:net"
 import * as tls from "node:tls"
 
-const DKIM_PRIVATE_KEY = readFileSync("/etc/dkim/mail.private", "utf8")
-const DKIM_SELECTOR = "mail"
-const DKIM_DOMAIN = "maddoxh.com"
+// ── Config ───────────────────────────────────────────────────────────────────
 
-async function getMXHost(domain: string): Promise<string> {
-    const records = await dns.resolveMx(domain)
-    records.sort((a, b) => a.priority - b.priority)
-    const host = records[0]?.exchange
-    if(!host) throw new Error(`No MX records found for ${domain}`)
-    return host
+const SMTP_HOSTNAME = "mail.maddoxh.com"
+
+const DKIM = {
+    privateKey: readFileSync("/etc/dkim/mail.private", "utf8"),
+    selector: "mail",
+    domain: "maddoxh.com",
 }
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export interface EmailParams {
+    from: string
+    to: string[]
+    cc?: string[]
+    subject: string
+    body: string
+    inReplyTo?: string
+    references?: string[]
+}
+
+type SmtpState =
+    | "GREETING"
+    | "EHLO"
+    | "STARTTLS"
+    | "MAIL_FROM"
+    | "RCPT_TO"
+    | "DATA"
+    | "BODY"
+    | "QUIT"
+
+// ── DKIM ─────────────────────────────────────────────────────────────────────
 
 function canonicalizeHeaderRelaxed(name: string, value: string): string {
     return `${name.toLowerCase()}:${value.replace(/\s+/g, " ").trim()}`
@@ -31,11 +53,7 @@ function canonicalizeBodyRelaxed(body: string): string {
     return canonical.join("\r\n") + "\r\n"
 }
 
-function sha256base64(data: string): string {
-    return createHash("sha256").update(data, "utf8").digest("base64")
-}
-
-function generateDKIMHeader(headers: {
+function buildDKIMHeader(headers: {
     from: string
     to: string
     cc?: string
@@ -46,61 +64,51 @@ function generateDKIMHeader(headers: {
 }): string {
     const { from, to, cc, subject, messageID, date, body } = headers
 
-    const bodyHash = sha256base64(canonicalizeBodyRelaxed(body))
+    const bodyHash = createHash("sha256").update(canonicalizeBodyRelaxed(body), "utf8").digest("base64")
     const signedHeaderNames = cc
         ? "from:to:cc:subject:date:message-id"
         : "from:to:subject:date:message-id"
     const timestamp = Math.floor(Date.now() / 1000)
 
     const dkimHeaderBase =
-        `v=1; a=rsa-sha256; c=relaxed/relaxed; d=${DKIM_DOMAIN}; ` +
-        `s=${DKIM_SELECTOR}; t=${timestamp}; ` +
+        `v=1; a=rsa-sha256; c=relaxed/relaxed; d=${DKIM.domain}; ` +
+        `s=${DKIM.selector}; t=${timestamp}; ` +
         `h=${signedHeaderNames}; bh=${bodyHash}; b=`
 
-    let canonHeaders =
-        canonicalizeHeaderRelaxed("from", from) + "\r\n" +
-        canonicalizeHeaderRelaxed("to", to) + "\r\n" +
-        (cc ? canonicalizeHeaderRelaxed("cc", cc) + "\r\n" : "") +
-        canonicalizeHeaderRelaxed("subject", subject) + "\r\n" +
-        canonicalizeHeaderRelaxed("date", date) + "\r\n" +
-        canonicalizeHeaderRelaxed("message-id", messageID) + "\r\n" +
-        canonicalizeHeaderRelaxed("dkim-signature", dkimHeaderBase)
+    const canonHeaders = [
+        canonicalizeHeaderRelaxed("from", from),
+        canonicalizeHeaderRelaxed("to", to),
+        ...(cc ? [canonicalizeHeaderRelaxed("cc", cc)] : []),
+        canonicalizeHeaderRelaxed("subject", subject),
+        canonicalizeHeaderRelaxed("date", date),
+        canonicalizeHeaderRelaxed("message-id", messageID),
+        canonicalizeHeaderRelaxed("dkim-signature", dkimHeaderBase),
+    ].join("\r\n")
 
     const sign = createSign("RSA-SHA256")
     sign.update(canonHeaders, "utf8")
-    const signature = sign.sign(DKIM_PRIVATE_KEY, "base64")
+    const signature = sign.sign(DKIM.privateKey, "base64")
     const folded = signature.replace(/(.{72})/g, "$1\r\n\t")
 
     return `DKIM-Signature: ${dkimHeaderBase}${folded}`
 }
 
-export async function sendRawEmail({ from, to, cc, subject, body, inReplyTo, references }: {
-    from: string
-    to: string[]
-    cc?: string[]
-    subject: string
-    body: string
-    inReplyTo?: string
-    references?: string[]
-}) {
-    if(!to.length) throw new Error("No recipients")
+// ── Message building ──────────────────────────────────────────────────────────
 
-    const allRecipients = [...to, ...(cc ?? [])]
-    const firstDomain = to[0]!.split("@")[1]
-    if(!firstDomain) throw new Error("Invalid recipient address")
+function buildMessage(params: EmailParams, messageID: string, date: string): string {
+    const { from, to, cc, subject, body, inReplyTo, references } = params
 
-    const byDomain = new Map<string, string[]>()
-    for(const addr of allRecipients) {
-        const domain = addr.split("@")[1] ?? ""
-        if(!byDomain.has(domain)) byDomain.set(domain, [])
-        byDomain.get(domain)!.push(addr)
-    }
+    const dkimHeader = buildDKIMHeader({
+        from: `Maddox <${from}>`,
+        to: to.join(", "),
+        cc: cc?.join(", "),
+        subject,
+        messageID,
+        date,
+        body,
+    })
 
-    const date = new Date().toUTCString()
-    const messageID = `<${Date.now()}.${Math.random().toString(36).slice(2)}@maddoxh.com>`
-    const dkimHeader = generateDKIMHeader({ from: `Maddox <${from}>`, to: to.join(", "), cc: cc?.join(", "), subject, messageID, date, body })
-
-    const message =
+    return (
         `${dkimHeader}\r\n` +
         `From: Maddox <${from}>\r\n` +
         `To: ${to.join(", ")}\r\n` +
@@ -114,25 +122,29 @@ export async function sendRawEmail({ from, to, cc, subject, body, inReplyTo, ref
         `Content-Type: text/plain; charset=UTF-8\r\n` +
         `\r\n` +
         `${body}`
-
-    const sends = Array.from(byDomain.entries()).map(([domain, recipients]) =>
-        sendToMX({ domain, recipients, from, message })
     )
-
-    await Promise.all(sends)
-    return messageID
 }
 
-async function sendToMX({ domain, recipients, from, message }: {
+// ── Delivery ──────────────────────────────────────────────────────────────────
+
+async function getMXHost(domain: string): Promise<string> {
+    const records = await dns.resolveMx(domain)
+    records.sort((a, b) => a.priority - b.priority)
+    const host = records[0]?.exchange
+    if(!host) throw new Error(`No MX records found for ${domain}`)
+    return host
+}
+
+async function smtpSession({ domain, recipients, from, message }: {
     domain: string
     recipients: string[]
     from: string
     message: string
-}) {
+}): Promise<void> {
     const mxHost = await getMXHost(domain)
 
     return new Promise<void>((resolve, reject) => {
-        let state = "GREETING"
+        let state: SmtpState = "GREETING"
         let recipientIndex = 0
         let buf = ""
         let tlsUpgraded = false
@@ -151,7 +163,7 @@ async function sendToMX({ domain, recipients, from, message }: {
             if(isContinuation) return
             if(state === "GREETING" && code === 220) {
                 state = "EHLO"
-                socket.write(`EHLO mail.maddoxh.com\r\n`)
+                socket.write(`EHLO ${SMTP_HOSTNAME}\r\n`)
             } else if(state === "EHLO" && code === 250) {
                 if(!tlsUpgraded) {
                     state = "STARTTLS"
@@ -209,7 +221,7 @@ async function sendToMX({ domain, recipients, from, message }: {
             const tlsSocket = tls.connect({ socket: plainSocket, servername: mxHost })
             tlsSocket.once("secureConnect", () => {
                 attachHandlers(tlsSocket)
-                tlsSocket.write(`EHLO mail.maddoxh.com\r\n`)
+                tlsSocket.write(`EHLO ${SMTP_HOSTNAME}\r\n`)
             })
             tlsSocket.on("error", reject)
         }
@@ -218,4 +230,31 @@ async function sendToMX({ domain, recipients, from, message }: {
         plainSocket.once("connect", () => attachHandlers(plainSocket))
         plainSocket.on("error", reject)
     })
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+export async function sendRawEmail(params: EmailParams): Promise<string> {
+    if(!params.to.length) throw new Error("No recipients")
+
+    const allRecipients = [...params.to, ...(params.cc ?? [])]
+
+    const byDomain = new Map<string, string[]>()
+    for(const addr of allRecipients) {
+        const domain = addr.split("@")[1] ?? ""
+        if(!domain) throw new Error(`Invalid recipient address: ${addr}`)
+        if(!byDomain.has(domain)) byDomain.set(domain, [])
+        byDomain.get(domain)!.push(addr)
+    }
+
+    const date = new Date().toUTCString()
+    const messageID = `<${Date.now()}.${Math.random().toString(36).slice(2)}@${DKIM.domain}>`
+    const message = buildMessage(params, messageID, date)
+
+    const sends = Array.from(byDomain.entries()).map(([domain, recipients]) =>
+        smtpSession({ domain, recipients, from: params.from, message })
+    )
+
+    await Promise.all(sends)
+    return messageID
 }
