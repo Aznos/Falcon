@@ -40,7 +40,8 @@ router.post("/signup", async (c) => {
     const {data, error} = await supabase.auth.admin.createUser({
         email,
         password,
-        email_confirm: true
+        email_confirm: false,
+        user_metadata: { handle: cleanHandle, full_name: fullName ?? null }
     })
 
     if(error || !data.user) {
@@ -58,7 +59,7 @@ router.post("/signup", async (c) => {
         return c.json({ error: "Failed to create profile" }, 500)
     }
 
-    return c.json({ ok: true, emailAddress: `${cleanHandle}@maddoxh.com` })
+    return c.json({ ok: true, emailAddress: `${cleanHandle}@maddoxh.com`, needsConfirmation: true })
 })
 
 router.post("/login", async (c) => {

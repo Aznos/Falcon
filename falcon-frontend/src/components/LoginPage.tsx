@@ -19,6 +19,7 @@ export function LoginPage({ onAuth }: Props) {
     const [handleStatus, setHandleStatus] = useState<"idle" | "checking" | "available" | "taken">("idle")
     const [error, setError] = useState("")
     const [loading, setLoading] = useState(false)
+    const [signupDone, setSignupDone] = useState(false)
 
     async function handleHandleChange(value: string) {
         setHandle(value)
@@ -44,16 +45,34 @@ export function LoginPage({ onAuth }: Props) {
                 const data = await signup(email, password, handle, fullName || undefined)
                 if(data.error) throw new Error(data.error)
 
-                const loginData = await login(email, password)
-                if(loginData.error) throw new Error(loginData.error)
-                saveSession(loginData.token, loginData.refreshToken, loginData.user)
-                onAuth(loginData.user)
+                setSignupDone(true)
             }
         } catch(e: any) {
             setError(e.message)
         } finally {
             setLoading(false)
         }
+    }
+
+    if(signupDone) {
+        return (
+            <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+                <div className="w-full max-w-sm p-8 bg-zinc-900 rounded-xl border border-zinc-800 text-center">
+                    <h1 className="text-xl font-semibold mb-2">Check your email</h1>
+                    <p className="text-sm text-zinc-400 mt-2">
+                        We sent a confirmation link to <span className="text-white">{email}</span>.
+                        Click it to activate your account, then come back to sign in.
+                    </p>
+                    <p className="text-xs text-zinc-600 mt-4">Didn't get it? Check spam.</p>
+                    <button
+                        onClick={() => { setSignupDone(false); setMode("login") }}
+                        className="mt-6 text-sm text-zinc-300 underline hover:text-white"
+                    >
+                        Back to sign in
+                    </button>
+                </div>
+            </div>
+        )
     }
 
     return (
