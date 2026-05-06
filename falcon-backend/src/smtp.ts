@@ -112,7 +112,7 @@ function buildMessage(params: EmailParams, messageID: string, date: string): str
 
     return (
         `${dkimHeader}\r\n` +
-        `From: ${fromHeader}\r\n` +
+        `From: ${params.fromDisplay ?? params.from} <${params.from}>\r\n` +
         `To: ${to.join(", ")}\r\n` +
         (cc?.length ? `Cc: ${cc.join(", ")}\r\n` : "") +
         `Subject: ${subject}\r\n` +
