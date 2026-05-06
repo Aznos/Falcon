@@ -40,11 +40,6 @@ export default function App() {
     }, [])
 
     useEffect(() => {
-        if(isLoggedIn()) setUser(getUser())
-        setAuthChecked(true)
-    }, []);
-
-    useEffect(() => {
         if(!user) return
         if(view === "inbox") loadInbox()
         if(view === "sent") loadSent()
