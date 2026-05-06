@@ -52,7 +52,7 @@ router.post("/send", async (c) => {
         const allRecipients = [...toList, ...ccList]
         for(const addr of allRecipients.filter(a => a.toLowerCase().endsWith("@maddoxh.com"))) {
             const handle = addr.split("@")[0]?.toLowerCase()
-            const { data: recipientProfile } = await supabase
+            const { data: recipientProfile } = await adminSupabase
                 .from("profiles")
                 .select("id")
                 .eq("email_handle", handle)
