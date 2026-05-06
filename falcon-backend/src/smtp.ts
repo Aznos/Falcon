@@ -1,6 +1,8 @@
 import { promises as dns } from "dns"
 import { createSign, createHash } from "crypto"
 import { readFileSync } from "fs"
+import * as net from "node:net"
+import * as tls from "node:tls"
 
 const DKIM_PRIVATE_KEY = readFileSync("/etc/dkim/mail.private", "utf8")
 const DKIM_SELECTOR = "mail"
@@ -133,63 +135,87 @@ async function sendToMX({ domain, recipients, from, message }: {
         let state = "GREETING"
         let recipientIndex = 0
         let buf = ""
+        let tlsUpgraded = false
 
-        Bun.connect({
-            hostname: mxHost,
-            port: 25,
-            socket: {
-                data(socket, data) {
-                    buf += new TextDecoder().decode(data)
-                    const lines = buf.split("\r\n")
-                    buf = lines.pop() ?? ""
+        function handleLine(socket: net.Socket | tls.TLSSocket, line: string) {
+            const code = parseInt(line.slice(0, 3))
+            const isContinuation = line[3] === "-"
+            console.log(`[SMTP] ${line}`)
 
-                    for(const line of lines) {
-                        if(!line) continue
-                        const code = parseInt(line.slice(0, 3))
-                        const isContinuation = line[3] === "-"
-                        console.log(`[SMTP] ${line}`)
-
-                        if(code >= 400) {
-                            socket.end()
-                            reject(new Error(`SMTP error ${code}: ${line}`))
-                            return
-                        }
-
-                        if(isContinuation) continue
-
-                        if(state === "GREETING" && code === 220) {
-                            state = "EHLO"
-                            socket.write(`EHLO mail.maddoxh.com\r\n`)
-                        } else if(state === "EHLO" && code === 250) {
-                            state = "MAIL_FROM"
-                            socket.write(`MAIL FROM:<${from}>\r\n`)
-                        } else if(state === "MAIL_FROM" && code === 250) {
-                            state = "RCPT_TO"
-                            socket.write(`RCPT TO:<${recipients[0]}>\r\n`)
-                            recipientIndex = 1
-                        } else if(state === "RCPT_TO" && code === 250) {
-                            if(recipientIndex < recipients.length) {
-                                socket.write(`RCPT TO:<${recipients[recipientIndex]}>\r\n`)
-                                recipientIndex++
-                            } else {
-                                state = "DATA"
-                                socket.write("DATA\r\n")
-                            }
-                        } else if(state === "DATA" && code === 354) {
-                            state = "BODY"
-                            socket.write(`${message}\r\n.\r\n`)
-                        } else if(state === "BODY" && code === 250) {
-                            state = "QUIT"
-                            socket.write("QUIT\r\n")
-                        } else if(state === "QUIT" && code === 221) {
-                            socket.end()
-                            resolve()
-                        }
-                    }
-                },
-                error(_, err) { reject(err) },
-                connectError(_, err) { reject(err) },
+            if(code >= 400) {
+                socket.destroy()
+                reject(new Error(`SMTP error ${code}: ${line}`))
+                return
             }
-        }).catch(reject)
+
+            if(isContinuation) return
+            if(state === "GREETING" && code === 220) {
+                state = "EHLO"
+                socket.write(`EHLO mail.maddoxh.com\r\n`)
+            } else if(state === "EHLO" && code === 250) {
+                if(!tlsUpgraded) {
+                    state = "STARTTLS"
+                    socket.write(`STARTTLS\r\n`)
+                } else {
+                    state = "MAIL_FROM"
+                    socket.write(`MAIL FROM:<${from}>\r\n`)
+                }
+            } else if(state === "STARTTLS" && code === 220) {
+                upgradeTLS(socket as net.Socket)
+            } else if(state === "MAIL_FROM" && code === 250) {
+                state = "RCPT_TO"
+                socket.write(`RCPT TO:<${recipients[0]}>\r\n`)
+                recipientIndex = 1
+            } else if(state === "RCPT_TO" && code === 250) {
+                if(recipientIndex < recipients.length) {
+                    socket.write(`RCPT TO:<${recipients[recipientIndex]}>\r\n`)
+                    recipientIndex++
+                } else {
+                    state = "DATA"
+                    socket.write("DATA\r\n")
+                }
+            } else if(state === "DATA" && code === 354) {
+                state = "BODY"
+                socket.write(`${message}\r\n.\r\n`)
+            } else if(state === "BODY" && code === 250) {
+                state = "QUIT"
+                socket.write("QUIT\r\n")
+            } else if(state === "QUIT" && code === 221) {
+                socket.destroy()
+                resolve()
+            }
+        }
+
+        function attachHandlers(socket: net.Socket | tls.TLSSocket) {
+            socket.on("data", (data: Buffer) => {
+                buf += data.toString("utf8")
+                const lines = buf.split("\r\n")
+                buf = lines.pop() ?? ""
+                for(const line of lines) {
+                    if(!line) continue
+                    handleLine(socket, line)
+                }
+            })
+            socket.on("error", reject)
+        }
+
+        function upgradeTLS(plainSocket: net.Socket) {
+            tlsUpgraded = true
+            state = "EHLO"
+            buf = ""
+            plainSocket.removeAllListeners("data")
+            plainSocket.removeAllListeners("error")
+
+            const tlsSocket = tls.connect({ socket: plainSocket, servername: mxHost })
+            tlsSocket.once("secureConnect", () => {
+                attachHandlers(tlsSocket)
+                tlsSocket.write(`EHLO mail.maddoxh.com\r\n`)
+            })
+            tlsSocket.on("error", reject)
+        }
+
+        const plainSocket = net.createConnection({ host: mxHost, port: 25 })
+        plainSocket.once("connect", () => attachHandlers(plainSocket))
+        plainSocket.on("error", reject)
     })
 }
