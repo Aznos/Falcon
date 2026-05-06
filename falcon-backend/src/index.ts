@@ -3,13 +3,18 @@ import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 import { startSMTPServer } from "./smtp-server.ts"
 import { emailRouter } from "./routes/email.ts"
+import {authRouter} from "./routes/auth.ts";
 
 const app = new Hono()
 
 app.use("*", logger())
-app.use("*", cors({ origin: "http://localhost:5173" }))
+app.use("*", cors({
+    origin: "http://localhost:5173",
+    allowHeaders: ["Content-Type", "Authorization"]
+}))
 
 app.get("/api/health", (c) => c.json({ status: "ok" }))
+app.route("/api/auth", authRouter)
 app.route("/api", emailRouter)
 
 startSMTPServer()
