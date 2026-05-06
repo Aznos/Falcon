@@ -8,5 +8,13 @@ export interface Email {
     message_id: string
 }
 
+export interface User {
+    id: string
+    email: string
+    handle: string
+    fullName: string | null
+    emailAddress: string
+}
+
 export type View = "inbox" | "sent" | "compose"
 export type SendStatus = "idle" | "sending" | "sent" | "error"
