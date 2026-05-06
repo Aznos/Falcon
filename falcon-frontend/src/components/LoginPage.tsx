@@ -97,11 +97,11 @@ export function LoginPage({ onAuth }: Props) {
                     )}
 
                     <div>
-                        <label className={labelClass}>Email</label>
+                        <label className={labelClass}>{mode === "login" ? "Email or Falcon address" : "Email"}</label>
                         <input
                             className={inputClass}
-                            type="email"
-                            placeholder="your@email.com"
+                            type="text"
+                            placeholder={mode === "login" ? "you@example.com" : "your@email.com"}
                             value={email}
                             onChange={e => setEmail(e.target.value)}
                         />
@@ -116,6 +116,11 @@ export function LoginPage({ onAuth }: Props) {
                             value={password}
                             onChange={e => setPassword(e.target.value)}
                         />
+                        {mode === "login" && (
+                            <div className="text-right mt-1">
+                                <a href="/forgot-password" className="text-xs text-zinc-500 hover:text-zinc-300">Forgot password?</a>
+                            </div>
+                        )}
                     </div>
 
                     {mode === "signup" && (

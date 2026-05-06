@@ -4,8 +4,6 @@ import {sendRawEmail} from "../smtp.ts";
 
 const router = new Hono()
 
-// Use the Supabase auth REST API directly so we never store a user JWT on the
-// shared admin client (which would corrupt subsequent service-role DB calls).
 async function supabaseSignIn(email: string, password: string) {
     const res = await fetch(`${process.env.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
         method: "POST",
@@ -128,7 +126,16 @@ router.post("/signup", async (c) => {
 })
 
 router.post("/login", async (c) => {
-    const { email, password } = await c.req.json()
+    let { email, password } = await c.req.json()
+
+    if(email?.toLowerCase().endsWith("@maddoxh.com")) {
+        const handle = email.split("@")[0].toLowerCase()
+        const { data: profile } = await supabase.from("profiles").select("id").eq("email_handle", handle).single()
+        if(profile) {
+            const { data: userData } = await supabase.auth.admin.getUserById(profile.id)
+            if(userData?.user?.email) email = userData.user.email
+        }
+    }
 
     const session = await supabaseSignIn(email, password)
     if(!session) {
@@ -189,6 +196,92 @@ router.post("/resend-confirmation", async (c) => {
         subject: "Verify your Falcon email address",
         body: `Click here to verify your email:\n\n${verifyUrl}\n\nExpires in 24 hours.\n\n— Falcon`,
     }).catch(console.error)
+
+    return c.json({ ok: true })
+})
+
+router.post("/forgot-password", async (c) => {
+    const { email } = await c.req.json()
+    if(!email) return c.json({ ok: true })
+
+    let userId: string | null = null
+    let sendTo: string | null = null
+
+    if(email.toLowerCase().endsWith("@maddoxh.com")) {
+        const handle = email.split("@")[0].toLowerCase()
+        const { data: profile } = await supabase.from("profiles").select("id").eq("email_handle", handle).single()
+        if(profile) {
+            const { data: userData } = await supabase.auth.admin.getUserById(profile.id)
+            if(userData?.user?.email) {
+                userId = profile.id
+                sendTo = userData.user.email
+            }
+        }
+    } else {
+        const { data: authUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 })
+        const authUser = authUsers?.users.find(u => u.email === email)
+        if(authUser?.email) {
+            userId = authUser.id
+            sendTo = authUser.email
+        }
+    }
+
+    if(!userId || !sendTo) return c.json({ ok: true })
+
+    const resetToken = crypto.randomUUID()
+    const resetExpiry = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+
+    const { error: updateError } = await supabase.from("profiles")
+        .update({ reset_token: resetToken, reset_token_expires: resetExpiry })
+        .eq("id", userId)
+
+    if(updateError) {
+        console.error("[Reset] Failed to store reset token:", updateError.message)
+        return c.json({ ok: true })
+    }
+
+    const resetUrl = `${process.env.FRONTEND_URL ?? "http://localhost:5173"}/reset-password?token=${resetToken}`
+
+    sendRawEmail({
+        from: "noreply@maddoxh.com",
+        fromDisplay: "Falcon",
+        to: [sendTo],
+        subject: "Reset your Falcon password",
+        body:
+            `Someone requested a password reset for your Falcon account.\n\n` +
+            `Click the link below to set a new password:\n\n` +
+            `${resetUrl}\n\n` +
+            `This link expires in 1 hour.\n\n` +
+            `If you didn't request this, ignore this email.\n\n` +
+            `— Falcon`,
+    }).catch(console.error)
+
+    return c.json({ ok: true })
+})
+
+router.post("/reset-password", async (c) => {
+    const { token, password } = await c.req.json()
+    if(!token || !password) return c.json({ error: "Missing fields" }, 400)
+
+    const { data: profile, error } = await supabase
+        .from("profiles")
+        .select("id, reset_token_expires")
+        .eq("reset_token", token)
+        .single()
+
+    if(error || !profile) return c.json({ error: "Invalid or expired link" }, 400)
+
+    if(new Date(profile.reset_token_expires) < new Date()) {
+        return c.json({ error: "This reset link has expired" }, 400)
+    }
+
+    const { error: updateError } = await supabase.auth.admin.updateUserById(profile.id, { password })
+    if(updateError) return c.json({ error: "Failed to update password" }, 500)
+
+    await supabase.from("profiles").update({
+        reset_token: null,
+        reset_token_expires: null,
+    }).eq("id", profile.id)
 
     return c.json({ ok: true })
 })

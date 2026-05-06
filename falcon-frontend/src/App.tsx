@@ -8,7 +8,9 @@ import { ComposeForm } from "./components/ComposeForm"
 import {clearSession, getUser, isLoggedIn} from "./auth.ts";
 import {LoginPage} from "./components/LoginPage.tsx";
 import {VerificationBanner} from "./components/VerificationBanner.tsx";
-import {VerifyPage} from "./components/VerifyPage.tsx";
+import {VerifyPage} from "./components/VerifyPage.tsx"
+import {ForgotPasswordPage} from "./components/ForgotPasswordPage.tsx"
+import {ResetPasswordPage} from "./components/ResetPasswordPage.tsx";
 
 export default function App() {
     const [view, setView] = useState<View>("inbox")
@@ -100,9 +102,9 @@ export default function App() {
         else setBody(value)
     }
 
-    if(window.location.pathname === "/verify") {
-        return <VerifyPage />
-    }
+    if(window.location.pathname === "/verify") return <VerifyPage />
+    if(window.location.pathname === "/forgot-password") return <ForgotPasswordPage />
+    if(window.location.pathname === "/reset-password") return <ResetPasswordPage />
 
     if(!authChecked) return null
     if(!user) return <LoginPage onAuth={setUser} />
