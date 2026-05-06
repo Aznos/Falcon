@@ -91,17 +91,18 @@ export function startSMTPServer() {
 
 async function saveEmail(session: EmailSession) {
     const raw = session.data
-
     const normalized = raw.replace(/\r\n/g, "\n")
     const lines = normalized.split("\n")
 
     const subjectLine = lines.find(l => l.toLowerCase().startsWith("subject:"))
     const subject = subjectLine ? subjectLine.replace(/^subject:\s*/i, "").trim() : "(no subject)"
 
-    let body = ""
+    const messageIdLine = lines.find(l => l.toLowerCase().startsWith("message-id:"))
+    const messageId = messageIdLine ? messageIdLine.replace(/^message-id:\s*/i, "").trim() : null
 
+    let body = ""
     const contentTypeLine = lines.find(l => l.toLowerCase().startsWith("content-type:"))
-    if (contentTypeLine?.toLowerCase().includes("multipart")) {
+    if(contentTypeLine?.toLowerCase().includes("multipart")) {
         const boundaryMatch = normalized.match(/boundary="([^"]+)"/)
         if(boundaryMatch) {
             const boundary = boundaryMatch[1]
@@ -110,8 +111,7 @@ async function saveEmail(session: EmailSession) {
                 if(part.toLowerCase().includes("content-type: text/plain")) {
                     const blankIndex = part.indexOf("\n\n")
                     if(blankIndex !== -1) {
-                        body = part.slice(blankIndex + 2).trim()
-                        body = body.replace(/^--$/, "").trim()
+                        body = part.slice(blankIndex + 2).trim().replace(/^--$/, "").trim()
                         break
                     }
                 }
@@ -122,17 +122,29 @@ async function saveEmail(session: EmailSession) {
         body = blankIndex !== -1 ? lines.slice(blankIndex + 1).join("\n").trim() : normalized
     }
 
-    console.log(`[DB] Subject: ${subject}`)
-    console.log(`[DB] Body: ${body}`)
+    const handle = session.to.split("@")[0]?.toLowerCase()
+    const { data: profile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("email_handle", handle)
+        .single()
+
+    if(!profile) {
+        console.log(`[SMTP] No user found for handle: ${handle}, dropping email`)
+        return
+    }
 
     const { error } = await supabase.from("emails").insert({
+        owner_id: profile.id,
         from_address: session.from,
         to_address: session.to,
         subject,
         body,
         raw,
+        folder: "inbox",
+        message_id: messageId,
     })
 
     if(error) console.error("[DB] Failed to save email:", error)
-    else console.log(`[DB] Saved email from ${session.from} to ${session.to}`)
+    else console.log(`[DB] Saved email for ${session.to}`)
 }
