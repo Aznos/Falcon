@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react"
-import type { Email, View, SendStatus } from "./types"
+import type {Email, View, SendStatus, User} from "./types"
 import { fetchInbox, fetchSent, sendEmail } from "./api"
 import { Sidebar } from "./components/Sidebar"
 import { EmailList } from "./components/EmailList"
 import { EmailDetail } from "./components/EmailDetail"
 import { ComposeForm } from "./components/ComposeForm"
+import {clearSession, getUser, isLoggedIn} from "./auth.ts";
+import {LoginPage} from "./components/LoginPage.tsx";
 
 export default function App() {
     const [view, setView] = useState<View>("inbox")
@@ -22,10 +24,23 @@ export default function App() {
     const [inReplyTo, setInReplyTo] = useState<string | undefined>()
     const [references, setReferences] = useState<string[]>([])
 
+    const [user, setUser] = useState<User | null>(null)
+    const [authChecked, setAuthChecked] = useState(false)
+
+    useEffect(() => {
+        if(isLoggedIn()) setUser(getUser())
+        setAuthChecked(true)
+    }, []);
+
     useEffect(() => {
         if(view === "inbox") loadInbox()
         if(view === "sent") loadSent()
     }, [view])
+
+    function handleLogout() {
+        clearSession()
+        setUser(null)
+    }
 
     async function loadInbox() {
         setLoading(true)
@@ -75,9 +90,12 @@ export default function App() {
         else setBody(value)
     }
 
+    if(!authChecked) return null
+    if(!user) return <LoginPage onAuth={setUser} />
+
     return (
         <div className="min-h-screen bg-zinc-950 text-white flex">
-            <Sidebar view={view} inboxCount={emails.length} onNavigate={handleNavigate} />
+            <Sidebar view={view} inboxCount={emails.length} onNavigate={handleNavigate} userEmail={user.emailAddress} onLogout={handleLogout} />
 
             <div className="flex flex-1 overflow-hidden">
                 {view === "inbox" && (
