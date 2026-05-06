@@ -8,6 +8,7 @@ import { ComposeForm } from "./components/ComposeForm"
 import {clearSession, getUser, isLoggedIn} from "./auth.ts";
 import {LoginPage} from "./components/LoginPage.tsx";
 import {VerificationBanner} from "./components/VerificationBanner.tsx";
+import {VerifyPage} from "./components/VerifyPage.tsx";
 
 export default function App() {
     const [view, setView] = useState<View>("inbox")
@@ -97,6 +98,10 @@ export default function App() {
         else if(field === "cc") setCc(value)
         else if(field === "subject") setSubject(value)
         else setBody(value)
+    }
+
+    if(window.location.pathname === "/verify") {
+        return <VerifyPage />
     }
 
     if(!authChecked) return null

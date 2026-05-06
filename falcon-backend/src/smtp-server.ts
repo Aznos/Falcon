@@ -24,6 +24,7 @@ export function startSMTPServer() {
 
             async data(socket, rawData) {
                 const msg = new TextDecoder().decode(rawData)
+                console.log(`[SMTP-RAW] ${JSON.stringify(msg)}`)
                 const session: EmailSession = (socket as any).session
 
                 if(session.collectingData) {
@@ -71,6 +72,10 @@ export function startSMTPServer() {
                     session.data = ""
                     session.collectingData = false
                     socket.write("250 OK\r\n")
+                } else if (upper.startsWith("AUTH")) {
+                    socket.write("235 2.7.0 Authentication successful\r\n")
+                } else if (upper.startsWith("EHLO") || upper.startsWith("HELO")) {
+                    socket.write("250-mail.maddoxh.com\r\n250-SIZE 10240000\r\n250-AUTH PLAIN LOGIN\r\n250 OK\r\n")
                 } else {
                     socket.write("502 Command not implemented\r\n")
                 }

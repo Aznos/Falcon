@@ -17,6 +17,11 @@ export function saveSession(token: string, refreshToken: string, user: import(".
     localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
+export function updateUser(updates: Partial<import("./types").User>) {
+    const user = getUser()
+    if(user) localStorage.setItem(USER_KEY, JSON.stringify({ ...user, ...updates }))
+}
+
 export function clearSession() {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(REFRESH_KEY)

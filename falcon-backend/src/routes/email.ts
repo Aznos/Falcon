@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import type { SupabaseClient, User } from "@supabase/supabase-js"
 import { sendRawEmail } from "../smtp.ts"
 import { authMiddleware} from "../middleware/auth.ts";
+import { supabase as adminSupabase } from "../db.ts"
 
 type Variables = {
     user: User
@@ -46,6 +47,28 @@ router.post("/send", async (c) => {
             inReplyTo,
             references,
         })
+
+        // Internal delivery: write directly to DB for @maddoxh.com recipients
+        const allRecipients = [...toList, ...ccList]
+        for(const addr of allRecipients.filter(a => a.toLowerCase().endsWith("@maddoxh.com"))) {
+            const handle = addr.split("@")[0]?.toLowerCase()
+            const { data: recipientProfile } = await supabase
+                .from("profiles")
+                .select("id")
+                .eq("email_handle", handle)
+                .single()
+            if(recipientProfile) {
+                await adminSupabase.from("emails").insert({
+                    owner_id: recipientProfile.id,
+                    from_address: fromAddress,
+                    to_address: toList.join(", "),
+                    subject,
+                    body,
+                    folder: "inbox",
+                    message_id: messageID,
+                })
+            }
+        }
 
         await supabase.from("emails").insert({
             owner_id: user.id,

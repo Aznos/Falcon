@@ -253,9 +253,11 @@ export async function sendRawEmail(params: EmailParams): Promise<string> {
     const messageID = `<${Date.now()}.${Math.random().toString(36).slice(2)}@${DKIM.domain}>`
     const message = buildMessage(params, messageID, date)
 
-    const sends = Array.from(byDomain.entries()).map(([domain, recipients]) =>
-        smtpSession({ domain, recipients, from: params.from, message })
-    )
+    const sends = Array.from(byDomain.entries())
+        .filter(([domain]) => domain !== "maddoxh.com")
+        .map(([domain, recipients]) =>
+            smtpSession({ domain, recipients, from: params.from, message })
+        )
 
     await Promise.all(sends)
     return messageID

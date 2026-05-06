@@ -71,7 +71,7 @@ export async function sendEmail(params: SendParams): Promise<{ ok?: boolean; mes
 }
 
 export async function resendConfirmation(email: string) {
-    const res = await fetch("/api/auth/resned-confirmation", {
+    const res = await fetch("/api/auth/resend-confirmation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email })
