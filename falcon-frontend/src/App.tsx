@@ -147,6 +147,7 @@ export default function App() {
                         error={error}
                         onChange={handleComposeChange}
                         onSend={handleSend}
+                        userEmail={user.emailAddress}
                     />
                 )}
             </div>

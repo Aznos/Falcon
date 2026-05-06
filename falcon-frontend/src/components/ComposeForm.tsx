@@ -8,13 +8,14 @@ interface Props {
     status: SendStatus
     error: string
     onChange: (field: "to" | "cc" | "subject" | "body", value: string) => void
-    onSend: () => void
+    onSend: () => void,
+    userEmail: string
 }
 
 const inputClass = "w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
 const labelClass = "text-xs text-zinc-400 uppercase tracking-wide"
 
-export function ComposeForm({ to, cc, subject, body, status, error, onChange, onSend }: Props) {
+export function ComposeForm({ to, cc, subject, body, status, error, onChange, onSend, userEmail }: Props) {
     return (
         <div className="flex-1 p-8 overflow-y-auto">
             <div className="max-w-lg">
@@ -22,7 +23,7 @@ export function ComposeForm({ to, cc, subject, body, status, error, onChange, on
                 <div className="space-y-4">
                     <div>
                         <label className={labelClass}>From</label>
-                        <p className="mt-1 text-sm text-zinc-300">me@maddoxh.com</p>
+                        <p className="mt-1 text-sm text-zinc-300">{userEmail}</p>
                     </div>
                     <div>
                         <label className={labelClass}>To</label>
