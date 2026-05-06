@@ -40,7 +40,7 @@ export async function signup(email: string, password: string, handle: string, fu
     return res.json()
 }
 
-export async function checkHandle(handle: string() {
+export async function checkHandle(handle: string) {
     const res = await fetch(`/api/auth/check-handle/${handle}`)
     return res.json()
 }
