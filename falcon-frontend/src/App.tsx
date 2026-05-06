@@ -30,12 +30,25 @@ export default function App() {
     useEffect(() => {
         if(isLoggedIn()) setUser(getUser())
         setAuthChecked(true)
+
+        const handleLogout = () => {
+            setUser(null)
+        }
+
+        window.addEventListener("falcon:logout", handleLogout)
+        return () => window.removeEventListener("falcon:logout", handleLogout)
+    }, [])
+
+    useEffect(() => {
+        if(isLoggedIn()) setUser(getUser())
+        setAuthChecked(true)
     }, []);
 
     useEffect(() => {
+        if(!user) return
         if(view === "inbox") loadInbox()
         if(view === "sent") loadSent()
-    }, [view])
+    }, [view, user])
 
     function handleLogout() {
         clearSession()

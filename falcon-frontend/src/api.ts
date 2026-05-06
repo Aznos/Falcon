@@ -3,18 +3,24 @@ import {clearSession, getToken} from "./auth.ts";
 
 async function authedFetch(url: string, options: RequestInit = {}) {
     const token = getToken()
+
+    if (!token) {
+        clearSession()
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 })
+    }
+
     const res = await fetch(url, {
         ...options,
         headers: {
             ...options.headers,
             "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
+            Authorization: `Bearer ${token}`,
+        },
     })
 
     if(res.status === 401) {
         clearSession()
-        window.location.reload()
+        window.dispatchEvent(new Event("falcon:logout"))
     }
 
     return res

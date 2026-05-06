@@ -15,7 +15,9 @@ app.use("*", cors({
 }))
 
 app.use("/api/auth/*", authRateLimit)
-app.use("/api/*", apiRateLimit)
+app.use("/api/inbox", apiRateLimit)
+app.use("/api/sent", apiRateLimit)
+app.use("/api/send", apiRateLimit)
 
 app.get("/api/health", (c) => c.json({ status: "ok" }))
 app.route("/api/auth", authRouter)
