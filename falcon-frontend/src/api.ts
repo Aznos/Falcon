@@ -46,17 +46,17 @@ export async function checkHandle(handle: string) {
 }
 
 export async function fetchInbox(): Promise<Email[]> {
-    const res = await fetch("/api/inbox?folder=inbox")
+    const res = await authedFetch("/api/inbox?folder=inbox")
     return res.json()
 }
 
 export async function fetchSent(): Promise<Email[]> {
-    const res = await fetch("/api/sent")
+    const res = await authedFetch("/api/sent")
     return res.json()
 }
 
 export async function sendEmail(params: SendParams): Promise<{ ok?: boolean; messageID?: string; error?: string }> {
-    const res = await fetch("/api/send", {
+    const res = await authedFetch("/api/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params),
