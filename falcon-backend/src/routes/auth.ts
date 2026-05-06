@@ -84,7 +84,8 @@ router.post("/login", async (c) => {
             email: data.user.email,
             handle: profile?.email_handle,
             fullName: profile?.full_name,
-            emailAddress: `${profile?.email_handle}@maddoxh.com`
+            emailAddress: `${profile?.email_handle}@maddoxh.com`,
+            emailConfirmed: !!data.user.email_confirmed_at
         }
     })
 })
@@ -98,6 +99,13 @@ router.post("/refresh", async (c) => {
     }
 
     return c.json({ token: data.session.access_token, refreshToken: data.session.refresh_token })
+})
+
+router.post("/resend-confirmation", async (c) => {
+    const { email } = await c.req.json()
+    const { error } = await supabase.auth.resend({ type: "signup", email })
+    if(error) return c.json({ error: error.message }, 500)
+    return c.json({ ok: true })
 })
 
 export { router as authRouter }

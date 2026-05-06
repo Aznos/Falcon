@@ -14,6 +14,7 @@ export interface User {
     handle: string
     fullName: string | null
     emailAddress: string
+    emailConfirmed: boolean
 }
 
 export type View = "inbox" | "sent" | "compose"

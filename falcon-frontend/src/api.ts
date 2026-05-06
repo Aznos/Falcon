@@ -70,6 +70,16 @@ export async function sendEmail(params: SendParams): Promise<{ ok?: boolean; mes
     return res.json()
 }
 
+export async function resendConfirmation(email: string) {
+    const res = await fetch("/api/auth/resned-confirmation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+    })
+
+    return res.json()
+}
+
 export interface SendParams {
     to: string
     cc?: string

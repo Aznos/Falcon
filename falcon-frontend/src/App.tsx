@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react"
 import type {Email, View, SendStatus, User} from "./types"
-import { fetchInbox, fetchSent, sendEmail } from "./api"
+import {fetchInbox, fetchSent, resendConfirmation, sendEmail} from "./api"
 import { Sidebar } from "./components/Sidebar"
 import { EmailList } from "./components/EmailList"
 import { EmailDetail } from "./components/EmailDetail"
 import { ComposeForm } from "./components/ComposeForm"
 import {clearSession, getUser, isLoggedIn} from "./auth.ts";
 import {LoginPage} from "./components/LoginPage.tsx";
+import {VerificationBanner} from "./components/VerificationBanner.tsx";
 
 export default function App() {
     const [view, setView] = useState<View>("inbox")
@@ -102,10 +103,16 @@ export default function App() {
     if(!user) return <LoginPage onAuth={setUser} />
 
     return (
-        <div className="min-h-screen bg-zinc-950 text-white flex">
-            <Sidebar view={view} inboxCount={emails.length} onNavigate={handleNavigate} userEmail={user.emailAddress} onLogout={handleLogout} />
+        <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
+            {!user.emailConfirmed && (
+                <VerificationBanner
+                    email={user.email}
+                    onResend={() => resendConfirmation(user.email)}
+                />
+            )}
 
             <div className="flex flex-1 overflow-hidden">
+                <Sidebar view={view} inboxCount={emails.length} onNavigate={handleNavigate} userEmail={user.emailAddress} onLogout={handleLogout} />
                 {view === "inbox" && (
                     <>
                         <EmailList
