@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from "react"
+import { useSearchParams, Link } from "react-router-dom"
 import { updateUser } from "../auth"
 
 export function VerifyPage() {
     const [status, setStatus] = useState<"loading" | "success" | "error">("loading")
     const [message, setMessage] = useState("")
     const hasFetched = useRef(false)
+    const [searchParams] = useSearchParams()
 
     useEffect(() => {
         if(hasFetched.current) return
         hasFetched.current = true
 
-        const token = new URLSearchParams(window.location.search).get("token")
+        const token = searchParams.get("token")
         if(!token) {
             setStatus("error")
             setMessage("Invalid verification link.")
@@ -42,14 +44,14 @@ export function VerifyPage() {
                     <>
                         <h1 className="text-xl font-semibold mb-2">Email verified</h1>
                         <p className="text-sm text-zinc-400 mb-6">Your email address has been confirmed.</p>
-                        <a href="/" className="text-sm text-white underline">Go to inbox</a>
+                        <Link to="/inbox" className="text-sm text-white underline">Go to inbox</Link>
                     </>
                 )}
                 {status === "error" && (
                     <>
                         <h1 className="text-xl font-semibold mb-2">Verification failed</h1>
                         <p className="text-sm text-red-400 mb-6">{message}</p>
-                        <a href="/" className="text-sm text-white underline">Go back</a>
+                        <Link to="/inbox" className="text-sm text-white underline">Go back</Link>
                     </>
                 )}
             </div>

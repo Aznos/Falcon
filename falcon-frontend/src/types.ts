@@ -17,5 +17,5 @@ export interface User {
     emailConfirmed: boolean
 }
 
-export type View = "inbox" | "sent" | "compose"
+export type View = "inbox" | "sent" | "compose" | "trash"
 export type SendStatus = "idle" | "sending" | "sent" | "error"

@@ -1,30 +1,11 @@
 import { Hono } from "hono"
 import { supabase } from "../db"
-import {sendRawEmail} from "../smtp.ts";
+import { sendRawEmail } from "../smtp.ts"
+import { supabaseSignIn, supabaseRefresh } from "../utils/auth-helpers.ts"
+import { verificationEmail, resendVerificationEmail, passwordResetEmail } from "../utils/email-templates.ts"
+import { DOMAIN } from "../utils/config.ts"
 
 const router = new Hono()
-
-async function supabaseSignIn(email: string, password: string) {
-    const res = await fetch(`${process.env.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": process.env.SUPABASE_SERVICE_ROLE_KEY! },
-        body: JSON.stringify({ email, password }),
-    })
-    const json = await res.json() as any
-    if(!res.ok || !json.access_token) return null
-    return { access_token: json.access_token as string, refresh_token: json.refresh_token as string, user: json.user as { id: string; email: string } }
-}
-
-async function supabaseRefresh(refreshToken: string) {
-    const res = await fetch(`${process.env.SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": process.env.SUPABASE_SERVICE_ROLE_KEY! },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-    })
-    const json = await res.json() as any
-    if(!res.ok || !json.access_token) return null
-    return { access_token: json.access_token as string, refresh_token: json.refresh_token as string }
-}
 
 router.get("/check-handle/:handle", async (c) => {
     const handle = c.req.param("handle").toLowerCase()
@@ -90,22 +71,8 @@ router.post("/signup", async (c) => {
         .update({ verify_token: verifyToken, verify_token_expires: verifyExpiry })
         .eq("id", data.user.id)
 
-    const verifyUrl = `${process.env.FRONTEND_URL ?? "http://localhost:5173"}/verify?token=${verifyToken}`
-
-    sendRawEmail({
-        from: "noreply@maddoxh.com",
-        fromDisplay: "Falcon",
-        to: [email],
-        subject: "Verify your Falcon email address",
-        body:
-            `Hi ${fullName ?? cleanHandle},\n\n` +
-            `Welcome to Falcon! Your address is ${cleanHandle}@maddoxh.com\n\n` +
-            `Please verify your recovery email by clicking the link below:\n\n` +
-            `${verifyUrl}\n\n` +
-            `This link expires in 24 hours.\n\n` +
-            `If you didn't sign up for Falcon, ignore this email.\n\n` +
-            `- Falcon`,
-    }).catch(e => console.error("[Mailer] Failed to send verification email:", e))
+    sendRawEmail(verificationEmail(email, verifyToken, cleanHandle, fullName ?? null))
+        .catch(e => console.error("[Mailer] Failed to send verification email:", e))
 
     const session = await supabaseSignIn(email, password)
     if(!session) return c.json({ error: "Signup succeeded but login failed" }, 500)
@@ -119,7 +86,7 @@ router.post("/signup", async (c) => {
             email: data.user.email,
             handle: cleanHandle,
             fullName: fullName ?? null,
-            emailAddress: `${cleanHandle}@maddoxh.com`,
+            emailAddress: `${cleanHandle}@${DOMAIN}`,
             emailConfirmed: false,
         }
     })
@@ -128,7 +95,7 @@ router.post("/signup", async (c) => {
 router.post("/login", async (c) => {
     let { email, password } = await c.req.json()
 
-    if(email?.toLowerCase().endsWith("@maddoxh.com")) {
+    if(email?.toLowerCase().endsWith(`@${DOMAIN}`)) {
         const handle = email.split("@")[0].toLowerCase()
         const { data: profile } = await supabase.from("profiles").select("id").eq("email_handle", handle).single()
         if(profile) {
@@ -156,7 +123,7 @@ router.post("/login", async (c) => {
             email: session.user.email,
             handle: profile?.email_handle,
             fullName: profile?.full_name,
-            emailAddress: `${profile?.email_handle}@maddoxh.com`,
+            emailAddress: `${profile?.email_handle}@${DOMAIN}`,
             emailConfirmed: profile?.email_verified ?? false,
         }
     })
@@ -187,15 +154,8 @@ router.post("/resend-confirmation", async (c) => {
         .update({ verify_token: verifyToken, verify_token_expires: verifyExpiry })
         .eq("id", authUser.id)
 
-    const verifyUrl = `${process.env.FRONTEND_URL ?? "http://localhost:5173"}/verify?token=${verifyToken}`
-
-    sendRawEmail({
-        from: "noreply@maddoxh.com",
-        fromDisplay: "Falcon",
-        to: [email],
-        subject: "Verify your Falcon email address",
-        body: `Click here to verify your email:\n\n${verifyUrl}\n\nExpires in 24 hours.\n\n— Falcon`,
-    }).catch(console.error)
+    sendRawEmail(resendVerificationEmail(email, verifyToken))
+        .catch(console.error)
 
     return c.json({ ok: true })
 })
@@ -207,7 +167,7 @@ router.post("/forgot-password", async (c) => {
     let userId: string | null = null
     let sendTo: string | null = null
 
-    if(email.toLowerCase().endsWith("@maddoxh.com")) {
+    if(email.toLowerCase().endsWith(`@${DOMAIN}`)) {
         const handle = email.split("@")[0].toLowerCase()
         const { data: profile } = await supabase.from("profiles").select("id").eq("email_handle", handle).single()
         if(profile) {
@@ -240,21 +200,8 @@ router.post("/forgot-password", async (c) => {
         return c.json({ ok: true })
     }
 
-    const resetUrl = `${process.env.FRONTEND_URL ?? "http://localhost:5173"}/reset-password?token=${resetToken}`
-
-    sendRawEmail({
-        from: "noreply@maddoxh.com",
-        fromDisplay: "Falcon",
-        to: [sendTo],
-        subject: "Reset your Falcon password",
-        body:
-            `Someone requested a password reset for your Falcon account.\n\n` +
-            `Click the link below to set a new password:\n\n` +
-            `${resetUrl}\n\n` +
-            `This link expires in 1 hour.\n\n` +
-            `If you didn't request this, ignore this email.\n\n` +
-            `— Falcon`,
-    }).catch(console.error)
+    sendRawEmail(passwordResetEmail(sendTo, resetToken))
+        .catch(console.error)
 
     return c.json({ ok: true })
 })

@@ -1,5 +1,11 @@
 import type { SendStatus } from "../types"
 
+interface ReplyContext {
+    fromAddress: string
+    date: string
+    displayBody: string
+}
+
 interface Props {
     to: string
     cc: string
@@ -7,19 +13,30 @@ interface Props {
     body: string
     status: SendStatus
     error: string
+    replyContext?: ReplyContext
     onChange: (field: "to" | "cc" | "subject" | "body", value: string) => void
-    onSend: () => void,
+    onSend: () => void
     userEmail: string
 }
 
 const inputClass = "w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
 const labelClass = "text-xs text-zinc-400 uppercase tracking-wide"
 
-export function ComposeForm({ to, cc, subject, body, status, error, onChange, onSend, userEmail }: Props) {
+export function ComposeForm({ to, cc, subject, body, status, error, replyContext, onChange, onSend, userEmail }: Props) {
     return (
         <div className="flex-1 p-8 overflow-y-auto">
             <div className="max-w-lg">
-                <h2 className="text-lg font-semibold mb-6">New Message</h2>
+                <h2 className="text-lg font-semibold mb-1">
+                    {replyContext ? "Reply" : "New Message"}
+                </h2>
+                {replyContext && (
+                    <p className="text-xs text-zinc-500 mb-5">
+                        to <span className="text-zinc-300">{replyContext.fromAddress}</span>
+                        <span className="text-zinc-600"> · {replyContext.date}</span>
+                    </p>
+                )}
+                {!replyContext && <div className="mb-5" />}
+
                 <div className="space-y-4">
                     <div>
                         <label className={labelClass}>From</label>
@@ -53,15 +70,32 @@ export function ComposeForm({ to, cc, subject, body, status, error, onChange, on
                         />
                     </div>
                     <div>
-                        <label className={labelClass}>Body</label>
+                        <label className={labelClass}>{replyContext ? "Your reply" : "Body"}</label>
                         <textarea
                             className={`${inputClass} resize-none`}
-                            rows={8}
-                            placeholder="Write your message..."
+                            rows={replyContext ? 6 : 8}
+                            placeholder={replyContext ? "Write your reply..." : "Write your message..."}
                             value={body}
                             onChange={e => onChange("body", e.target.value)}
+                            autoFocus={!!replyContext}
                         />
                     </div>
+
+                    {/* Quoted original — read-only, visually separated from compose area */}
+                    {replyContext && (
+                        <div className="border-t border-zinc-800 pt-4">
+                            <div className="pl-4 border-l-2 border-zinc-700">
+                                <p className="text-xs text-zinc-500 mb-2 leading-relaxed">
+                                    On <span className="text-zinc-400">{replyContext.date}</span>,{" "}
+                                    <span className="font-medium text-zinc-400">{replyContext.fromAddress}</span> wrote:
+                                </p>
+                                <p className="text-xs text-zinc-500 whitespace-pre-wrap leading-relaxed">
+                                    {replyContext.displayBody}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     <button
                         onClick={onSend}
                         disabled={status === "sending"}

@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Link } from "react-router-dom"
 import { forgotPassword } from "../api"
 
 const inputClass = "w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
@@ -33,9 +34,9 @@ export function ForgotPasswordPage() {
                         If an account exists for <span className="text-white">{email}</span>, we've sent a reset link to the backup email address on file. It expires in 1 hour.
                     </p>
                     <p className="text-xs text-zinc-600 mt-3">Didn't get it? Check spam.</p>
-                    <a href="/" className="mt-6 block text-sm text-zinc-300 underline hover:text-white">
+                    <Link to="/login" className="mt-6 block text-sm text-zinc-300 underline hover:text-white">
                         Back to sign in
-                    </a>
+                    </Link>
                 </div>
             </div>
         )
@@ -68,7 +69,7 @@ export function ForgotPasswordPage() {
                         {loading ? "..." : "Send reset link"}
                     </button>
                     <p className="text-xs text-zinc-500 text-center">
-                        <a href="/" className="text-zinc-300 hover:text-white underline">Back to sign in</a>
+                        <Link to="/login" className="text-zinc-300 hover:text-white underline">Back to sign in</Link>
                     </p>
                 </div>
             </div>

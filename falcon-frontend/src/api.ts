@@ -98,6 +98,26 @@ export async function resendConfirmation(email: string) {
     return res.json()
 }
 
+export async function fetchTrash(): Promise<Email[]> {
+    const res = await authedFetch("/api/trash")
+    return res.json()
+}
+
+export async function moveToTrash(id: string) {
+    const res = await authedFetch(`/api/emails/${id}`, { method: "DELETE" })
+    return res.json()
+}
+
+export async function restoreFromTrash(id: string) {
+    const res = await authedFetch(`/api/emails/${id}/restore`, { method: "POST" })
+    return res.json()
+}
+
+export async function permanentlyDelete(id: string) {
+    const res = await authedFetch(`/api/emails/${id}/permanent`, { method: "DELETE" })
+    return res.json()
+}
+
 export interface SendParams {
     to: string
     cc?: string

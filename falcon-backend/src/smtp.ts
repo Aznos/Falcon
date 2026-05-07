@@ -3,15 +3,14 @@ import { createSign, createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import * as net from "node:net"
 import * as tls from "node:tls"
+import { DOMAIN, SMTP_HOSTNAME } from "./utils/config.ts"
 
 // ── Config ───────────────────────────────────────────────────────────────────
-
-const SMTP_HOSTNAME = "mail.maddoxh.com"
 
 const DKIM = {
     privateKey: readFileSync("/etc/dkim/mail.private", "utf8"),
     selector: "mail",
-    domain: "maddoxh.com",
+    domain: DOMAIN,
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -254,7 +253,7 @@ export async function sendRawEmail(params: EmailParams): Promise<string> {
     const message = buildMessage(params, messageID, date)
 
     const sends = Array.from(byDomain.entries())
-        .filter(([domain]) => domain !== "maddoxh.com")
+        .filter(([domain]) => domain !== DOMAIN)
         .map(([domain, recipients]) =>
             smtpSession({ domain, recipients, from: params.from, message })
         )

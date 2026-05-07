@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Link } from "react-router-dom"
 import { login, signup, checkHandle } from "../api"
 import { saveSession } from "../auth"
 import type { User } from "../types"
@@ -118,7 +119,7 @@ export function LoginPage({ onAuth }: Props) {
                         />
                         {mode === "login" && (
                             <div className="text-right mt-1">
-                                <a href="/forgot-password" className="text-xs text-zinc-500 hover:text-zinc-300">Forgot password?</a>
+                                <Link to="/forgot-password" className="text-xs text-zinc-500 hover:text-zinc-300">Forgot password?</Link>
                             </div>
                         )}
                     </div>

@@ -1,11 +1,13 @@
 import { useState } from "react"
+import { useSearchParams, Link } from "react-router-dom"
 import { resetPassword } from "../api"
 
 const inputClass = "w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
 const labelClass = "text-xs text-zinc-400 uppercase tracking-wide"
 
 export function ResetPasswordPage() {
-    const token = new URLSearchParams(window.location.search).get("token")
+    const [searchParams] = useSearchParams()
+    const token = searchParams.get("token")
     const [password, setPassword] = useState("")
     const [confirm, setConfirm] = useState("")
     const [status, setStatus] = useState<"form" | "loading" | "success">("form")
@@ -17,7 +19,7 @@ export function ResetPasswordPage() {
                 <div className="w-full max-w-sm p-8 bg-zinc-900 rounded-xl border border-zinc-800 text-center">
                     <h1 className="text-xl font-semibold mb-2">Invalid link</h1>
                     <p className="text-sm text-red-400 mb-6">This reset link is invalid or has expired.</p>
-                    <a href="/" className="text-sm text-white underline">Back to sign in</a>
+                    <Link to="/login" className="text-sm text-white underline">Back to sign in</Link>
                 </div>
             </div>
         )
@@ -44,7 +46,7 @@ export function ResetPasswordPage() {
                 <div className="w-full max-w-sm p-8 bg-zinc-900 rounded-xl border border-zinc-800 text-center">
                     <h1 className="text-xl font-semibold mb-2">Password updated</h1>
                     <p className="text-sm text-zinc-400 mb-6">Your password has been reset. You can now sign in.</p>
-                    <a href="/" className="text-sm text-white underline">Sign in</a>
+                    <Link to="/login" className="text-sm text-white underline">Sign in</Link>
                 </div>
             </div>
         )

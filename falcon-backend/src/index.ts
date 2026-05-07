@@ -10,7 +10,7 @@ const app = new Hono()
 
 app.use("*", logger())
 app.use("*", cors({
-    origin: "http://localhost:5173",
+    origin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
     allowHeaders: ["Content-Type", "Authorization"]
 }))
 
@@ -18,6 +18,8 @@ app.use("/api/auth/*", authRateLimit)
 app.use("/api/inbox", apiRateLimit)
 app.use("/api/sent", apiRateLimit)
 app.use("/api/send", apiRateLimit)
+app.use("/api/trash", apiRateLimit)
+app.use("/api/emails/*", apiRateLimit)
 
 app.get("/api/health", (c) => c.json({ status: "ok" }))
 app.route("/api/auth", authRouter)

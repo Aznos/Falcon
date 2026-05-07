@@ -1,10 +1,41 @@
 import {supabase} from "./db.ts";
+import { SMTP_HOSTNAME } from "./utils/config.ts"
 
 interface EmailSession {
     from: string
     to: string
     data: string
     collectingData: boolean
+}
+
+/**
+ * Decode a quoted-printable encoded string to UTF-8.
+ * Handles:
+ *   - Soft line breaks: "=\r\n" and "=\n" → removed (line continuation)
+ *   - Encoded bytes: "=XX" hex pairs → raw bytes, then decoded as UTF-8
+ */
+function decodeQuotedPrintable(input: string): string {
+    // Remove soft line breaks first
+    const joined = input.replace(/=\r\n/g, "").replace(/=\n/g, "")
+
+    // Collect raw bytes: QP hex sequences become byte values, everything else is ASCII
+    const bytes: number[] = []
+    let i = 0
+    while (i < joined.length) {
+        if (
+            joined[i] === "=" &&
+            i + 2 < joined.length &&
+            /[0-9A-Fa-f]{2}/.test(joined.slice(i + 1, i + 3))
+        ) {
+            bytes.push(parseInt(joined.slice(i + 1, i + 3), 16))
+            i += 3
+        } else {
+            bytes.push(joined.charCodeAt(i) & 0xff)
+            i++
+        }
+    }
+
+    return Buffer.from(bytes).toString("utf-8")
 }
 
 export function startSMTPServer() {
@@ -19,7 +50,7 @@ export function startSMTPServer() {
                     data: "",
                     collectingData: false,
                 } as EmailSession
-                socket.write("220 mail.maddoxh.com ESMTP Falcon\r\n")
+                socket.write(`220 ${SMTP_HOSTNAME} ESMTP Falcon\r\n`)
             },
 
             async data(socket, rawData) {
@@ -50,7 +81,7 @@ export function startSMTPServer() {
                 const upper = trimmed.toUpperCase()
 
                 if(upper.startsWith("EHLO") || upper.startsWith("HELO")) {
-                    socket.write("250-mail.maddoxh.com\r\n250-SIZE 10240000\r\n250 OK\r\n")
+                    socket.write(`250-${SMTP_HOSTNAME}\r\n250-SIZE 10240000\r\n250 OK\r\n`)
                 } else if(upper.startsWith("MAIL FROM")) {
                     session.from = trimmed.match(/<(.+)>/)?.[1] ?? ""
                     socket.write("250 OK\r\n")
@@ -75,7 +106,7 @@ export function startSMTPServer() {
                 } else if (upper.startsWith("AUTH")) {
                     socket.write("235 2.7.0 Authentication successful\r\n")
                 } else if (upper.startsWith("EHLO") || upper.startsWith("HELO")) {
-                    socket.write("250-mail.maddoxh.com\r\n250-SIZE 10240000\r\n250-AUTH PLAIN LOGIN\r\n250 OK\r\n")
+                    socket.write(`250-${SMTP_HOSTNAME}\r\n250-SIZE 10240000\r\n250-AUTH PLAIN LOGIN\r\n250 OK\r\n`)
                 } else {
                     socket.write("502 Command not implemented\r\n")
                 }
@@ -99,14 +130,22 @@ async function saveEmail(session: EmailSession) {
     const normalized = raw.replace(/\r\n/g, "\n")
     const lines = normalized.split("\n")
 
-    const subjectLine = lines.find(l => l.toLowerCase().startsWith("subject:"))
+    // Separate headers from body at the first blank line
+    const headerBoundary = lines.findIndex(l => l.trim() === "")
+    const headerLines = headerBoundary !== -1 ? lines.slice(0, headerBoundary) : lines
+
+    const subjectLine = headerLines.find(l => l.toLowerCase().startsWith("subject:"))
     const subject = subjectLine ? subjectLine.replace(/^subject:\s*/i, "").trim() : "(no subject)"
 
-    const messageIdLine = lines.find(l => l.toLowerCase().startsWith("message-id:"))
+    const messageIdLine = headerLines.find(l => l.toLowerCase().startsWith("message-id:"))
     const messageId = messageIdLine ? messageIdLine.replace(/^message-id:\s*/i, "").trim() : null
 
+    // Top-level transfer encoding (used for non-multipart messages)
+    const topCTELine = headerLines.find(l => l.toLowerCase().startsWith("content-transfer-encoding:"))
+    const topCTE = topCTELine?.split(":")[1]?.trim().toLowerCase()
+
     let body = ""
-    const contentTypeLine = lines.find(l => l.toLowerCase().startsWith("content-type:"))
+    const contentTypeLine = headerLines.find(l => l.toLowerCase().startsWith("content-type:"))
     if(contentTypeLine?.toLowerCase().includes("multipart")) {
         const boundaryMatch = normalized.match(/boundary="([^"]+)"/)
         if(boundaryMatch) {
@@ -116,7 +155,17 @@ async function saveEmail(session: EmailSession) {
                 if(part.toLowerCase().includes("content-type: text/plain")) {
                     const blankIndex = part.indexOf("\n\n")
                     if(blankIndex !== -1) {
-                        body = part.slice(blankIndex + 2).trim().replace(/^--$/, "").trim()
+                        let partBody = part.slice(blankIndex + 2).trim().replace(/^--$/, "").trim()
+
+                        // Check the transfer encoding declared in this MIME part's headers
+                        const partCTEMatch = part.match(/content-transfer-encoding:\s*(.+)/i)
+                        const partCTE = partCTEMatch?.[1]?.trim().toLowerCase()
+
+                        if(partCTE === "quoted-printable") {
+                            partBody = decodeQuotedPrintable(partBody)
+                        }
+
+                        body = partBody
                         break
                     }
                 }
@@ -125,6 +174,10 @@ async function saveEmail(session: EmailSession) {
     } else {
         const blankIndex = lines.findIndex(l => l.trim() === "")
         body = blankIndex !== -1 ? lines.slice(blankIndex + 1).join("\n").trim() : normalized
+
+        if(topCTE === "quoted-printable") {
+            body = decodeQuotedPrintable(body)
+        }
     }
 
     const handle = session.to.split("@")[0]?.toLowerCase()

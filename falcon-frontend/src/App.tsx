@@ -1,33 +1,14 @@
 import { useEffect, useState } from "react"
-import type {Email, View, SendStatus, User} from "./types"
-import {fetchInbox, fetchSent, resendConfirmation, sendEmail} from "./api"
-import { Sidebar } from "./components/Sidebar"
-import { EmailList } from "./components/EmailList"
-import { EmailDetail } from "./components/EmailDetail"
-import { ComposeForm } from "./components/ComposeForm"
-import {clearSession, getUser, isLoggedIn} from "./auth.ts";
-import {LoginPage} from "./components/LoginPage.tsx";
-import {VerificationBanner} from "./components/VerificationBanner.tsx";
-import {VerifyPage} from "./components/VerifyPage.tsx"
-import {ForgotPasswordPage} from "./components/ForgotPasswordPage.tsx"
-import {ResetPasswordPage} from "./components/ResetPasswordPage.tsx";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import type { User } from "./types"
+import { clearSession, getUser, isLoggedIn } from "./auth"
+import { LoginPage } from "./pages/LoginPage"
+import { VerifyPage } from "./pages/VerifyPage"
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage"
+import { ResetPasswordPage } from "./pages/ResetPasswordPage"
+import { MailPage } from "./pages/MailPage"
 
 export default function App() {
-    const [view, setView] = useState<View>("inbox")
-    const [emails, setEmails] = useState<Email[]>([])
-    const [sentEmails, setSentEmails] = useState<Email[]>([])
-    const [selected, setSelected] = useState<Email | null>(null)
-    const [loading, setLoading] = useState(true)
-
-    const [to, setTo] = useState("")
-    const [cc, setCc] = useState("")
-    const [subject, setSubject] = useState("")
-    const [body, setBody] = useState("")
-    const [status, setStatus] = useState<SendStatus>("idle")
-    const [error, setError] = useState("")
-    const [inReplyTo, setInReplyTo] = useState<string | undefined>()
-    const [references, setReferences] = useState<string[]>([])
-
     const [user, setUser] = useState<User | null>(null)
     const [authChecked, setAuthChecked] = useState(false)
 
@@ -35,144 +16,44 @@ export default function App() {
         if(isLoggedIn()) setUser(getUser())
         setAuthChecked(true)
 
-        const handleLogout = () => {
-            setUser(null)
-        }
-
+        const handleLogout = () => setUser(null)
         window.addEventListener("falcon:logout", handleLogout)
         return () => window.removeEventListener("falcon:logout", handleLogout)
     }, [])
-
-    useEffect(() => {
-        if(!user) return
-        if(view === "inbox") loadInbox()
-        if(view === "sent") loadSent()
-    }, [view, user])
 
     function handleLogout() {
         clearSession()
         setUser(null)
     }
 
-    async function loadInbox() {
-        setLoading(true)
-        setEmails(await fetchInbox())
-        setLoading(false)
-    }
-
-    async function loadSent() {
-        setLoading(true)
-        setSentEmails(await fetchSent())
-        setLoading(false)
-    }
-
-    function handleNavigate(next: View) {
-        setSelected(null)
-        if(next === "compose") setStatus("idle")
-        setView(next)
-    }
-
-    function handleReply(email: Email) {
-        setTo(email.from_address)
-        setSubject(email.subject.startsWith("Re:") ? email.subject : `Re: ${email.subject}`)
-        setBody(`\n\n--- Original message ---\nFrom: ${email.from_address}\n${email.body}`)
-        setInReplyTo(email.message_id ?? undefined)
-        setReferences(email.message_id ? [email.message_id] : [])
-        setView("compose")
-    }
-
-    async function handleSend() {
-        setStatus("sending")
-        setError("")
-        try {
-            const res = await sendEmail({ to, cc: cc || undefined, subject, body, inReplyTo, references })
-            if(res.error) throw new Error(res.error)
-            setTo(""); setCc(""); setSubject(""); setBody("")
-            setStatus("sent")
-        } catch(e: any) {
-            setError(e.message)
-            setStatus("error")
-        }
-    }
-
-    function handleComposeChange(field: "to" | "cc" | "subject" | "body", value: string) {
-        if(field === "to") setTo(value)
-        else if(field === "cc") setCc(value)
-        else if(field === "subject") setSubject(value)
-        else setBody(value)
-    }
-
-    if(window.location.pathname === "/verify") return <VerifyPage />
-    if(window.location.pathname === "/forgot-password") return <ForgotPasswordPage />
-    if(window.location.pathname === "/reset-password") return <ResetPasswordPage />
-
     if(!authChecked) return null
-    if(!user) return <LoginPage onAuth={setUser} />
 
     return (
-        <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
-            {!user.emailConfirmed && (
-                <VerificationBanner
-                    email={user.email}
-                    onResend={() => resendConfirmation(user.email)}
-                />
-            )}
-
-            <div className="flex flex-1 overflow-hidden">
-                <Sidebar view={view} inboxCount={emails.length} onNavigate={handleNavigate} userEmail={user.emailAddress} onLogout={handleLogout} />
-                {view === "inbox" && (
-                    <>
-                        <EmailList
-                            title="Inbox"
-                            emails={emails}
-                            loading={loading}
-                            selected={selected}
-                            emptyMessage="No emails yet."
-                            displayAddress={e => e.from_address}
-                            onSelect={setSelected}
-                            onRefresh={loadInbox}
-                        />
-                        <EmailDetail
-                            email={selected}
-                            emptyMessage="Select an email to read"
-                            onReply={handleReply}
-                        />
-                    </>
-                )}
-
-                {view === "sent" && (
-                    <>
-                        <EmailList
-                            title="Sent"
-                            emails={sentEmails}
-                            loading={loading}
-                            selected={selected}
-                            emptyMessage="No sent emails."
-                            displayAddress={e => e.to_address}
-                            onSelect={setSelected}
-                            onRefresh={loadSent}
-                        />
-                        <EmailDetail
-                            email={selected}
-                            emptyMessage="Select a message to read"
-                        />
-                    </>
-                )}
-
-                {view === "compose" && (
-                    <ComposeForm
-                        to={to}
-                        cc={cc}
-                        subject={subject}
-                        body={body}
-                        status={status}
-                        error={error}
-                        onChange={handleComposeChange}
-                        onSend={handleSend}
-                        userEmail={user.emailAddress}
-                    />
-                )}
-            </div>
-        </div>
+        <BrowserRouter>
+            <Routes>
+                <Route path="/verify" element={<VerifyPage />} />
+                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/login" element={
+                    user ? <Navigate to="/inbox" replace /> : <LoginPage onAuth={setUser} />
+                } />
+                <Route path="/inbox" element={
+                    user ? <MailPage user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />
+                } />
+                <Route path="/sent" element={
+                    user ? <MailPage user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />
+                } />
+                <Route path="/compose" element={
+                    user ? <MailPage user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />
+                } />
+                <Route path="/trash" element={
+                    user ? <MailPage user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />
+                } />
+                <Route path="/" element={
+                    <Navigate to={user ? "/inbox" : "/login"} replace />
+                } />
+                <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+        </BrowserRouter>
     )
 }
